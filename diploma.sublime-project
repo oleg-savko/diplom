@@ -1,0 +1,13 @@
+{
+    "folders":
+    [
+        {
+            "path": "."
+        }
+    ],
+    "settings": {
+        "TEXroot": "diploma.tex",
+        "tex_file_exts": [".tex"],
+        "color_scheme": "Packages/User/Material-Theme-Lighter (SublimePythonIDE).tmTheme",
+    }
+}

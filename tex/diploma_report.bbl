@@ -1,0 +1,164 @@
+\begin{thebibliography}{10}
+\def\selectlanguageifdefined#1{
+\expandafter\ifx\csname date#1\endcsname\relax
+\else\language\csname l@#1\endcsname\fi}
+\ifx\undefined\url\def\url#1{{\small #1}}\else\fi
+\ifx\undefined\BibUrl\def\BibUrl#1{\url{#1}}\else\fi
+\ifx\undefined\BibAnnote\long\def\BibAnnote#1{}\else\fi
+\ifx\undefined\BibEmph\def\BibEmph#1{#1}\else\fi
+
+\bibitem{ga}
+\selectlanguageifdefined{english}
+Google Analytics [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа:
+  \url{https://www.google.by/intl/ru/analytics/}.
+
+\bibitem{crms}
+\selectlanguageifdefined{english}
+Что следует учитывать при выборе CRM системы
+  [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа:
+  \url{http://www.integros.com.ua/presscenter/detail.php?ID=474&phrase_id=67740#.V0YVWZN96Aw}.
+
+\bibitem{sugar}
+\selectlanguageifdefined{english}
+Что такое Microsoft Dynamics CRM? [Электронный
+  ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа:
+  \url{https://www.sugarcrm.com/products/overview}.
+
+\bibitem{msdyn}
+\selectlanguageifdefined{russia}
+Что такое Microsoft Dynamics CRM? [Электронный
+  ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа:
+  \url{https://www.microsoft.com/ru-ru/dynamics/crm.aspx}.
+
+\bibitem{zoho}
+\selectlanguageifdefined{english}
+Zoho CRM. Обзор [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа: \url{https://habrahabr.ru/post/248281/}.
+
+\bibitem{fullcontact}
+\selectlanguageifdefined{english}
+Full Contact Developer [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа:
+  \url{https://www.fullcontact.com/developer/docs/}.
+
+\bibitem{micro}
+\selectlanguageifdefined{english}
+Микросервисы (Microservices) [Электронный ресурс].
+  ---
+\newblock Электронные данные. ---
+\newblock Режим доступа: \url{https://habrahabr.ru/post/249183/}.
+
+\bibitem{cloud_config}
+\selectlanguageifdefined{english}
+Spring Cloud Config [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа:
+  \url{http://cloud.spring.io/spring-cloud-config/}.
+
+\bibitem{spring_cloud}
+\selectlanguageifdefined{english}
+Spring Cloud [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа:
+  \url{http://projects.spring.io/spring-cloud}.
+
+\bibitem{spring_site}
+\selectlanguageifdefined{english}
+Spring Framework [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа: \url{https://spring.io/}.
+
+\bibitem{netflix_oss}
+\selectlanguageifdefined{english}
+Netflix Open Source Software Center [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа: \url{https://netflix.github.io/}.
+
+\bibitem{tut_micros}
+\selectlanguageifdefined{english}
+Building microservices with Spring Cloud and Netflix OSS
+  [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа:
+  \url{http://callistaenterprise.se/blogg/teknik/2015/04/10/building-microservices-with-spring-cloud-and-netflix-oss-part-1/}.
+
+\bibitem{eureka}
+\selectlanguageifdefined{english}
+Netflix Shares Cloud Load Balancing And Failover Tool: Eureka!
+  [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа:
+  \url{http://techblog.netflix.com/2012/09/eureka.html}.
+
+\bibitem{ribbon}
+\selectlanguageifdefined{english}
+Announcing Ribbon: Tying the Netflix Mid-Tier Services Together
+  [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа:
+  \url{http://techblog.netflix.com/2013/01/announcing-ribbon-tying-netflix-mid.html}.
+
+\bibitem{zuul}
+\selectlanguageifdefined{english}
+Announcing Zuul: Edge Service in the Cloud [Электронный
+  ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа:
+  \url{http://techblog.netflix.com/2013/06/announcing-zuul-edge-service-in-cloud.html}.
+
+\bibitem{hystrix}
+\selectlanguageifdefined{english}
+Introducing Hystrix for Resilience Engineering [Электронный
+  ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа:
+  \url{http://techblog.netflix.com/2012/11/hystrix.html}.
+
+\bibitem{mongo}
+\selectlanguageifdefined{english}
+The MongoDB 2.6 Manual [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа: \url{https://docs.mongodb.com/v2.6/}.
+
+\bibitem{redis}
+\selectlanguageifdefined{english}
+Redis Documentation - Package [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа: \url{http://redis.io/documentation}.
+
+\bibitem{live_agent}
+\selectlanguageifdefined{english}
+Live Agent Developer's Guide [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа:
+  \url{https://resources.docs.salesforce.com/sfdc/pdf/live_agent_dev_guide.pdf/}.
+
+\bibitem{palicyn_2006}
+\selectlanguageifdefined{russian}
+\BibEmph{Палицын,~В.~А.} Технико-экономическое
+  обоснование дипломных проектов: Метод.
+  пособие для студ. всех спец. БГУИР. В 4-х ч.
+  Ч. 4: Проекты программного обеспечения~/
+  В.~А.~Палицын. ---
+\newblock Минск~: БГУИР, 2006. ---
+\newblock 76~{с.}
+
+\bibitem{belcalendar_2016}
+\selectlanguageifdefined{russian}
+Календарь праздников на 2016 год для
+  Беларуси [Электронный ресурс]. ---
+\newblock Электронные данные. ---
+\newblock Режим доступа: \url{http://calendar.by/2016/\#bkm}. ---
+  Дата доступа: 05.03.2016.
+
+\end{thebibliography}

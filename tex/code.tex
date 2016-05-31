@@ -1,0 +1,1779 @@
+
+
+\sectioncentered*{ПРИЛОЖЕНИЕ А}
+\addcontentsline{toc}{section}{Приложение А Исходный код программного средства.}
+\begin{center}
+\vspace{-1em}
+\textbf{ (обязательное)}
+
+\textbf{Исходный код программного средства}
+\end{center}
+
+
+  \begin{lstlisting}[language=Ruby, style=rubystyle]
+
+package com.analiticinfochat.admin.config;
+
+import com.analiticinfochat.admin.rabbit.EventResult;
+import org.springframework.amqp.core.AmqpAdmin;
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.TopicExchange;
+import org.springframework.amqp.rabbit.annotation.EnableRabbit;
+import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
+import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.core.RabbitAdmin;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.support.converter.ClassMapper;
+import org.springframework.amqp.support.converter.DefaultClassMapper;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.amqp.support.converter.MessageConverter;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Configuration
+@EnableRabbit
+public class RabbitmqConfig {
+
+    public static final String QUEUE_NAME = "event:save:result";
+    private static final String TOPIC = "event:result";
+
+    @Bean
+    Queue queue() {
+        return new Queue(QUEUE_NAME, false);
+    }
+
+    @Bean
+    TopicExchange exchange() {
+        return new TopicExchange(TOPIC);
+    }
+
+    @Bean
+    Binding binding(Queue queue, TopicExchange exchange) {
+        return BindingBuilder.bind(queue).to(exchange).with(QUEUE_NAME);
+    }
+
+    @Bean
+    RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
+        final RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
+        rabbitTemplate.setMessageConverter(messageConverter());
+        return rabbitTemplate;
+    }
+
+    @Bean
+    public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory() {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory());
+        factory.setMessageConverter(messageConverter());
+        return factory;
+    }
+
+    @Bean
+    public MessageConverter messageConverter() {
+        final Jackson2JsonMessageConverter jackson2JsonMessageConverter = new Jackson2JsonMessageConverter();
+        jackson2JsonMessageConverter.setClassMapper(typeMapper());
+        return jackson2JsonMessageConverter;
+    }
+
+    private ClassMapper typeMapper() {
+        DefaultClassMapper typeMapper = new DefaultClassMapper();
+        typeMapper.setDefaultType(EventResult.class);
+        Map<String, Class<?>> idClassMapping = new HashMap<>();
+        idClassMapping.put("com.analiticinfochat.ets.service.redis.EventListener$EventResult", EventResult.class);
+        typeMapper.setIdClassMapping(idClassMapping);
+        return typeMapper;
+    }
+
+    @Bean
+    public AmqpAdmin amqpAdmin() {
+        return new RabbitAdmin(connectionFactory());
+    }
+
+    @Bean
+    public ConnectionFactory connectionFactory() {
+        CachingConnectionFactory connectionFactory = new CachingConnectionFactory("127.0.0.1");
+        return connectionFactory;
+    }
+}
+
+
+package com.analiticinfochat.admin.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+
+@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception
+        http.httpBasic().disable();
+        // @formatter:off
+        http.authorizeRequests()
+                .antMatchers("/v2/api-docs").permitAll()
+                .antMatchers("/chat/**").permitAll()
+                .anyRequest().authenticated();
+        // @formatter:on
+    }
+}
+
+package com.analiticinfochat.admin.config;
+
+import com.fasterxml.classmate.TypeResolver;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.context.request.async.DeferredResult;
+import springfox.documentation.builders.PathSelectors;
+import springfox.documentation.builders.RequestHandlerSelectors;
+import springfox.documentation.builders.ResponseMessageBuilder;
+import springfox.documentation.schema.ModelRef;
+import springfox.documentation.schema.WildcardType;
+import springfox.documentation.service.ApiKey;
+import springfox.documentation.service.AuthorizationScope;
+import springfox.documentation.service.SecurityReference;
+import springfox.documentation.spi.DocumentationType;
+import springfox.documentation.spi.service.contexts.SecurityContext;
+import springfox.documentation.spring.web.plugins.Docket;
+import springfox.documentation.swagger.web.SecurityConfiguration;
+import springfox.documentation.swagger.web.UiConfiguration;
+
+import java.time.LocalDate;
+import java.util.List;
+
+import static com.google.common.collect.Lists.newArrayList;
+import static springfox.documentation.schema.AlternateTypeRules.newRule;
+
+@Configuration
+public class SwaggerConfig {
+
+    @Bean
+    public Docket petApi() {
+        return new Docket(DocumentationType.SWAGGER_2).select().apis(RequestHandlerSelectors.any())
+                .paths(PathSelectors.any()).build().pathMapping("/")
+                .directModelSubstitute(LocalDate.class, String.class).genericModelSubstitutes(ResponseEntity.class)
+                .alternateTypeRules(newRule(typeResolver
+                                .resolve(DeferredResult.class, typeResolver.resolve(ResponseEntity.class,
+                                        WildcardType.class)),
+                        typeResolver.resolve(WildcardType.class))).useDefaultResponseMessages(false)
+                .globalResponseMessage(RequestMethod.GET, newArrayList(
+                        new ResponseMessageBuilder().code(500).message("500 message")
+                                .responseModel(new ModelRef("Error")).build())).securitySchemes(newArrayList(apiKey()))
+                .securityContexts(newArrayList(securityContext()));
+    }
+
+    @Autowired
+    private TypeResolver typeResolver;
+
+    private ApiKey apiKey() {
+        return new ApiKey("mykey", "api_key", "header");
+    }
+
+    private SecurityContext securityContext() {
+        return SecurityContext.builder().securityReferences(defaultAuth()).forPaths(PathSelectors.regex("/anyPath.*"))
+                .build();
+    }
+
+    List<SecurityReference> defaultAuth() {
+        AuthorizationScope authorizationScope = new AuthorizationScope("global", "accessEverything");
+        AuthorizationScope[] authorizationScopes = new AuthorizationScope[1];
+        authorizationScopes[0] = authorizationScope;
+        return newArrayList(new SecurityReference("mykey", authorizationScopes));
+    }
+
+    @Bean
+    SecurityConfiguration security() {
+        return new SecurityConfiguration("test-app-client-id", "test-app-realm", "test-app", "apiKey");
+    }
+
+    @Bean
+    UiConfiguration uiConfig() {
+        return new UiConfiguration("validatorUrl");
+    }
+}
+
+package com.analiticinfochat.admin.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter;
+
+@Configuration
+public class WebConfig extends WebMvcConfigurerAdapter {
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/**");
+    }
+}
+
+package com.analiticinfochat.admin.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.web.socket.config.annotation.AbstractWebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
+import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
+
+@Configuration
+@EnableWebSocketMessageBroker
+public class WebSocketConfig extends AbstractWebSocketMessageBrokerConfigurer {
+
+    @Override
+    public void configureMessageBroker(MessageBrokerRegistry config) {
+        config.enableSimpleBroker("/topic");
+        config.setApplicationDestinationPrefixes("/app");
+    }
+
+    @Override
+    public void registerStompEndpoints(StompEndpointRegistry registry) {
+        registry.addEndpoint("/chat").setAllowedOrigins("*").withSockJS();
+    }
+}
+
+package com.analiticinfochat.admin.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.messaging.MessageSecurityMetadataSourceRegistry;
+import org.springframework.security.config.annotation.web.socket.AbstractSecurityWebSocketMessageBrokerConfigurer;
+
+public class WebSocketSecurityConfig extends AbstractSecurityWebSocketMessageBrokerConfigurer {
+    protected void configureInbound(MessageSecurityMetadataSourceRegistry messages) {
+        messages.simpDestMatchers("/**").permitAll();
+    }
+}
+
+package com.analiticinfochat.admin.controller;
+
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.security.Principal;
+
+@RestController
+public class AuthenticationController {
+
+    @RequestMapping("/user")
+    public Principal user(Principal user) {
+        return user;
+    }
+}
+
+package com.analiticinfochat.admin.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.Collections;
+import java.util.List;
+
+@RestController
+public class EventModelController {
+
+    @Autowired
+    private LoadBalancerClient loadBalancer;
+
+    @Autowired
+    private RestTemplate restTemplate;
+
+
+    @RequestMapping(value = "/all-models", method = RequestMethod.GET)
+    public String allModels() {
+        String url = "http://ets-service" + "/event-models/all";
+        return restTemplate.getForEntity(url, String.class).getBody();
+    }
+
+    @RequestMapping(value = "/save")
+
+    private List<String> defaultEventModels() {
+        return Collections.emptyList();
+    }
+}
+
+package com.analiticinfochat.admin.controller;
+
+import com.analiticinfochat.admin.rabbit.EventResult;
+import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.handler.annotation.SendTo;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.CrossOrigin;
+
+@Controller
+public class WebSocketController {
+
+    @CrossOrigin(origins = "http://localhost:8080")
+    @MessageMapping("/chat")
+    @SendTo("/topic/message")
+    public EventResult sendMessage(String result) {
+        return new EventResult(result);
+    }
+}
+
+package com.analiticinfochat.admin.feign;
+
+import org.springframework.cloud.netflix.feign.FeignClient;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+
+import java.util.List;
+
+@FeignClient(EtsServiceClient.ETS_SERVICE)
+public interface EtsServiceClient {
+    String ETS_SERVICE = "ets-service";
+
+        @RequestMapping(value = "/event-models/all", method = RequestMethod.GET)
+        List<String> getAllEventModels();
+}
+
+package com.analiticinfochat.admin;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration;
+import org.springframework.cloud.client.circuitbreaker.EnableCircuitBreaker;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+import org.springframework.cloud.netflix.feign.EnableFeignClients;
+import org.springframework.cloud.netflix.zuul.EnableZuulProxy;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.session.data.redis.config.annotation.web.http.EnableRedisHttpSession;
+import springfox.documentation.swagger2.annotations.EnableSwagger2;
+
+@EnableFeignClients
+@EnableDiscoveryClient
+@EnableCircuitBreaker
+@SpringBootApplication
+@EnableZuulProxy
+@EnableSwagger2
+@EnableRedisHttpSession
+public class AdministrationClientApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(AdministrationClientApplication.class, args);
+    }
+}
+
+package com.analiticinfochat.admin.rabbit;
+
+public class EventResult {
+    private String result;
+
+    public EventResult() {}
+
+    public EventResult(String result) {
+        this.result = result;
+    }
+
+    public String getResult() {
+        return result;
+    }
+
+    public void setResult(String result) {
+        this.result = result;
+    }
+
+    @Override
+    public String toString() {
+        return "EventResult{" +
+                "result='" + result + '\'' +
+                '}';
+    }
+}
+
+package com.analiticinfochat.admin.rabbit;
+
+import com.analiticinfochat.admin.config.RabbitmqConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.stereotype.Service;
+
+@Service
+public class EventResultListener {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(EventResult.class);
+
+    @Autowired
+    private SimpMessagingTemplate template;
+
+    @RabbitListener(queues = { RabbitmqConfig.QUEUE_NAME })
+    @SuppressWarnings("unused")
+    public void processEventResult(EventResult eventResult) {
+        LOGGER.info("EVENT RESULT: {}.", eventResult);
+        template.convertAndSend("/topic/message", eventResult);
+    }
+}
+
+package com.analiticinfochat.config
+
+import org.springframework.boot.SpringApplication
+import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.cloud.config.server.EnableConfigServer
+
+@SpringBootApplication
+@EnableConfigServer
+class ConfigServerApplication {
+
+	static void main(String[] args) {
+        SpringApplication.run ConfigServerApplication, args
+	}
+}
+
+
+package com.analiticinfochat.discovery;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.netflix.eureka.server.EnableEurekaServer;
+
+@SpringBootApplication
+@EnableEurekaServer
+public class DiscoveryServerApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(DiscoveryServerApplication.class, args);
+	}
+}
+
+package com.analiticinfochat.ets;
+
+import com.analiticinfochat.ets.entity.sql.EventModel;
+import com.analiticinfochat.ets.repository.mongo.EventRepository;
+import com.analiticinfochat.ets.repository.sql.EventModelRepository;
+import com.analiticinfochat.ets.service.redis.RedisService;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+import org.springframework.context.annotation.Bean;
+import springfox.documentation.swagger2.annotations.EnableSwagger2;
+
+@EnableDiscoveryClient
+@SpringBootApplication
+//@EnableResourceServer
+@EnableSwagger2
+//@EnableRedisHttpSession
+public class EtsApp /*extends WebSecurityConfigurerAdapter */ {
+
+    @Bean
+    CommandLineRunner warnUpRedis(EventRepository eventRepository, RedisService redisService) {
+        return args -> {
+            redisService.warnUpRedis();
+        };
+    }
+
+  
+    public static void main(String[] args) {
+        SpringApplication.run(EtsApp.class, args);
+    }
+}
+
+package com.analiticinfochat.ets.config;
+
+import com.analiticinfochat.ets.dto.RequestEventApiDto;
+import org.apache.log4j.Logger;
+import org.springframework.amqp.core.AmqpAdmin;
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.TopicExchange;
+import org.springframework.amqp.rabbit.annotation.EnableRabbit;
+import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
+import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
+import org.springframework.amqp.rabbit.core.RabbitAdmin;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.support.converter.ClassMapper;
+import org.springframework.amqp.support.converter.DefaultClassMapper;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
+import org.springframework.amqp.support.converter.MessageConverter;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+@EnableRabbit
+public class RabbitmqConfig {
+
+    public final static String QUEUE_NAME = "eventqueue";
+    public static final String TOPIC = QUEUE_NAME + "-exchange";
+
+    private static final Logger LOGGER = Logger.getLogger(RabbitmqConfig.class);
+
+    @Bean
+    Queue queue() {
+        return new Queue(QUEUE_NAME, false);
+    }
+
+    @Bean
+    TopicExchange exchange() {
+        return new TopicExchange(TOPIC);
+    }
+
+    @Bean
+    Binding binding(Queue queue, TopicExchange exchange) {
+        return BindingBuilder.bind(queue).to(exchange).with(QUEUE_NAME);
+    }
+
+    @Bean
+    RabbitTemplate rabbitTemplate(ConnectionFactory connectionFactory) {
+        final RabbitTemplate rabbitTemplate = new RabbitTemplate(connectionFactory);
+        rabbitTemplate.setMessageConverter(messageConverter());
+        return rabbitTemplate;
+    }
+
+    @Bean
+    public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory() {
+        SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
+        factory.setConnectionFactory(connectionFactory());
+        factory.setMessageConverter(messageConverter());
+        return factory;
+    }
+
+    @Bean
+    public MessageConverter messageConverter() {
+        final Jackson2JsonMessageConverter jackson2JsonMessageConverter = new Jackson2JsonMessageConverter();
+        jackson2JsonMessageConverter.setClassMapper(typeMapper());
+        return jackson2JsonMessageConverter;
+    }
+
+    private ClassMapper typeMapper() {
+        DefaultClassMapper typeMapper = new DefaultClassMapper();
+        typeMapper.setDefaultType(RequestEventApiDto.class);
+        //        HashMap<String, Class> idClassMapping = new HashMap<String, Class>();
+        //        idClassMapping.put("range", NumberRange.class);
+        //        typeMapper.setIdClassMapping(idClassMapping);
+        return typeMapper;
+    }
+
+    @Bean
+    public AmqpAdmin amqpAdmin() {
+        return new RabbitAdmin(connectionFactory());
+    }
+
+    @Bean
+    public ConnectionFactory connectionFactory() {
+        CachingConnectionFactory connectionFactory = new CachingConnectionFactory("127.0.0.1");
+        return connectionFactory;
+    }
+}
+
+package com.analiticinfochat.ets.config;
+
+import com.analiticinfochat.ets.dto.RequestEventApiDto;
+import com.analiticinfochat.ets.service.redis.EventListener;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.listener.PatternTopic;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
+import org.springframework.data.redis.listener.adapter.MessageListenerAdapter;
+import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.JdkSerializationRedisSerializer;
+
+@Configuration
+public class RedisConfig {
+
+    public static final String EVENT_PROCESS_TOPIC = "eventtopic";
+
+    @Bean
+    RedisMessageListenerContainer container(RedisConnectionFactory connectionFactory,
+                                            MessageListenerAdapter listenerAdapter) {
+
+        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+        container.setConnectionFactory(connectionFactory);
+        container.addMessageListener(listenerAdapter, new PatternTopic(EVENT_PROCESS_TOPIC));
+        return container;
+    }
+
+    @Bean
+    MessageListenerAdapter listenerAdapter(EventListener listener) {
+        final MessageListenerAdapter receiveMessage = new MessageListenerAdapter(listener, "processEvent");
+        receiveMessage.setSerializer(new JdkSerializationRedisSerializer());
+        return receiveMessage;
+    }
+
+    @Bean
+    EventListener listener() {
+        return new EventListener();
+    }
+
+    @Bean
+    RedisTemplate redisTemplate(RedisConnectionFactory connectionFactory) {
+        final RedisTemplate redisTemplate = new RedisTemplate();
+        redisTemplate.setConnectionFactory(connectionFactory);
+        return redisTemplate;
+    }
+}
+
+package com.analiticinfochat.ets.config;
+
+import com.fasterxml.classmate.TypeResolver;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.context.request.async.DeferredResult;
+import springfox.documentation.builders.PathSelectors;
+import springfox.documentation.builders.RequestHandlerSelectors;
+import springfox.documentation.builders.ResponseMessageBuilder;
+import springfox.documentation.schema.ModelRef;
+import springfox.documentation.schema.WildcardType;
+import springfox.documentation.service.ApiInfo;
+import springfox.documentation.service.ApiKey;
+import springfox.documentation.service.AuthorizationScope;
+import springfox.documentation.service.SecurityReference;
+import springfox.documentation.spi.DocumentationType;
+import springfox.documentation.spi.service.contexts.SecurityContext;
+import springfox.documentation.spring.web.plugins.Docket;
+import springfox.documentation.swagger.web.SecurityConfiguration;
+import springfox.documentation.swagger.web.UiConfiguration;
+
+import java.time.LocalDate;
+import java.util.List;
+
+import static com.google.common.collect.Lists.newArrayList;
+import static springfox.documentation.schema.AlternateTypeRules.newRule;
+
+@Configuration
+public class SwaggerConfig {
+    @Bean
+    public Docket petApi() {
+        return new Docket(DocumentationType.SWAGGER_2).select().apis(RequestHandlerSelectors.any())
+                .paths(PathSelectors.any()).build().pathMapping("/")
+                .directModelSubstitute(LocalDate.class, String.class).genericModelSubstitutes(ResponseEntity.class)
+                .alternateTypeRules(newRule(typeResolver
+                                .resolve(DeferredResult.class, typeResolver.resolve(ResponseEntity.class,
+                                        WildcardType.class)),
+                        typeResolver.resolve(WildcardType.class))).useDefaultResponseMessages(false)
+                .globalResponseMessage(RequestMethod.GET, newArrayList(
+                        new ResponseMessageBuilder().code(500).message("500 message")
+                                .responseModel(new ModelRef("Error")).build())).securitySchemes(newArrayList(apiKey()))
+                .securityContexts(newArrayList(securityContext()));
+    }
+
+    @Autowired
+    private TypeResolver typeResolver;
+
+    private ApiKey apiKey() {
+        return new ApiKey("mykey", "api_key", "header");
+    }
+
+    private SecurityContext securityContext() {
+        return SecurityContext.builder().securityReferences(defaultAuth()).forPaths(PathSelectors.regex("/anyPath.*"))
+                .build();
+    }
+
+    List<SecurityReference> defaultAuth() {
+        AuthorizationScope authorizationScope = new AuthorizationScope("global", "accessEverything");
+        AuthorizationScope[] authorizationScopes = new AuthorizationScope[1];
+        authorizationScopes[0] = authorizationScope;
+        return newArrayList(new SecurityReference("mykey", authorizationScopes));
+    }
+
+    @Bean
+    SecurityConfiguration security() {
+        return new SecurityConfiguration("test-app-client-id", "test-app-realm", "test-app", "apiKey");
+    }
+
+    @Bean
+    UiConfiguration uiConfig() {
+        return new UiConfiguration("validatorUrl");
+    }
+
+    private ApiInfo apiInfo() {
+        return new ApiInfo("ETS SERVICE", "ETS SERVICE API", "API TOS", "aleh.sauko@gmail.com", null, null, null);
+    }
+}
+
+package com.analiticinfochat.ets.controller;
+
+import com.analiticinfochat.ets.config.RabbitmqConfig;
+import com.analiticinfochat.ets.dto.RequestEventApiDto;
+import com.analiticinfochat.ets.entity.mongo.Event;
+import com.analiticinfochat.ets.repository.sql.EventModelRepository;
+import com.analiticinfochat.ets.service.EventService;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
+import org.springframework.amqp.core.AmqpAdmin;
+import org.springframework.amqp.core.AmqpTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+
+import java.io.IOException;
+
+@Controller
+@Api(value = EventController.PATH, description = "Event Operations")
+@RequestMapping(value = "/event", consumes = { "application/json" })
+public class EventController {
+    public static final String PATH = "/event";
+
+    private final RedisTemplate redisTemplate;
+    private final AmqpTemplate rabbitTemplate;
+    private final EventModelRepository eventModelRepository;
+    private final EventService eventService;
+    private final AmqpAdmin amqpAdmin;
+
+    @Autowired
+    public EventController(EventModelRepository eventModelRepository, EventService eventService,
+                           RedisTemplate redisTemplate, AmqpTemplate rabbitTemplate, AmqpAdmin amqpAdmin) {
+        this.eventModelRepository = eventModelRepository;
+        this.eventService = eventService;
+        this.redisTemplate = redisTemplate;
+        this.rabbitTemplate = rabbitTemplate;
+        this.amqpAdmin = amqpAdmin;
+    }
+
+    @RequestMapping(value = "/save", method = RequestMethod.POST)
+    @ApiOperation(value = "Save event", response = Event.class)
+    public ResponseEntity saveEvent(@ApiParam @RequestBody RequestEventApiDto requestEventApiDto) {
+        rabbitTemplate.convertAndSend(RabbitmqConfig.TOPIC, RabbitmqConfig.QUEUE_NAME, requestEventApiDto);
+        return new ResponseEntity<>(HttpStatus.OK);
+    }
+}
+
+package com.analiticinfochat.ets.controller;
+
+import com.analiticinfochat.ets.entity.sql.EventModel;
+import com.analiticinfochat.ets.entity.sql.EventPropertyType;
+import com.analiticinfochat.ets.repository.sql.EventModelPropertyRepository;
+import com.analiticinfochat.ets.repository.sql.EventModelRepository;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiParam;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Arrays;
+import java.util.List;
+
+@RestController
+@Api(value = "/event-models", description = "Event Models Operarions")
+@RequestMapping(value = "/event-models")
+public class EventModelRestController {
+
+    @Autowired
+    private EventModelRepository eventModelRepository;
+
+    @Autowired
+    private EventModelPropertyRepository eventModelPropertyRepository;
+
+    @RequestMapping(value = "/create", method = RequestMethod.POST)
+    public EventModel createEvent(@RequestBody EventModel eventModel) {
+        return eventModelRepository.save(eventModel);
+    }
+
+    @RequestMapping(value = "/delete/{id}", method = RequestMethod.DELETE)
+    public void deleteEventModel(@PathVariable("id") Long id) {
+        eventModelRepository.delete(id);
+    }
+
+    @ApiOperation(value = "Save Event Model", response = EventModel.class)
+    @RequestMapping(value = "/save", method = RequestMethod.POST, consumes = { MediaType.APPLICATION_JSON_VALUE })
+    public EventModel saveEventModel(@ApiParam @RequestBody EventModel eventModel) {
+        eventModel.getProps().stream().forEach(p -> p.setEventModel(eventModel));
+        return eventModelRepository.save(eventModel);
+    }
+
+    @ApiOperation(value = "Get Event model by id", response = EventModel.class)
+    @RequestMapping(value = "/{id}", method = RequestMethod.GET)
+    public EventModel getEvent(@PathVariable("id") Long eventId) {
+        return eventModelRepository.findWithProps(eventId);
+    }
+
+    @ApiOperation(value = "Get All Event Models", response = EventModel.class, responseContainer = "List")
+    @RequestMapping(value = "/all", method = RequestMethod.GET)
+    public List<EventModel> getEventModels() {
+        return eventModelRepository.findAll();
+    }
+
+    @RequestMapping(value = "/prop-types")
+    public List<EventPropertyType> getEventPropertyTypes() {
+        return Arrays.asList(EventPropertyType.values());
+    }
+
+    @RequestMapping(value = "/delete-property/{id}", method = RequestMethod.DELETE)
+    public void deleteProperty(@ApiParam @PathVariable("id") Long id) {
+        eventModelPropertyRepository.delete(id);
+    }
+}
+
+package com.analiticinfochat.ets.controller;
+
+import org.springframework.amqp.AmqpException;
+import org.springframework.hateoas.VndErrors;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.ResponseStatus;
+
+@ControllerAdvice
+public class ExceptionController {
+
+    @ResponseBody
+    @ExceptionHandler(AmqpException.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    VndErrors amqpException(AmqpException ex) {
+        return new VndErrors("error", ex.getMessage());
+    }
+}
+
+package com.analiticinfochat.ets.dto;
+
+import java.io.Serializable;
+import java.util.Map;
+
+public class RequestEventApiDto implements Serializable {
+
+    private Map<String, String> props;
+    private String type;
+
+    public Map<String, String> getProps() {
+        return props;
+    }
+
+    public void setProps(Map<String, String> props) {
+        this.props = props;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+}
+
+package com.analiticinfochat.ets.entity.mongo;
+
+import org.bson.types.ObjectId;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+import java.util.Map;
+
+@Document(collection = "events")
+public class Event {
+
+    @Id
+    private ObjectId id;
+
+    private String type;
+
+    private Map<String, Object> props;
+
+    public Event() {
+    }
+
+    public ObjectId getId() {
+        return id;
+    }
+
+    public void setId(ObjectId id) {
+        this.id = id;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public Map<String, Object> getProps() {
+        return props;
+    }
+
+    public void setProps(Map<String, Object> props) {
+        this.props = props;
+    }
+}
+
+package com.analiticinfochat.ets.entity.sql;
+
+import com.analiticinfochat.ets.entity.PersistentObject;
+
+import javax.persistence.CascadeType;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.FetchType;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.Index;
+import javax.persistence.NamedAttributeNode;
+import javax.persistence.NamedEntityGraph;
+import javax.persistence.OneToMany;
+import javax.persistence.Table;
+import javax.persistence.UniqueConstraint;
+import java.util.Set;
+
+@Entity
+@Table(name = "events", uniqueConstraints = { @UniqueConstraint(name = "uniq_type", columnNames = "type") },
+        indexes = @Index(name = "type_index", columnList = "type"))
+@NamedEntityGraph(name = EventModel.EVENT_MODEL_PROPS, attributeNodes = @NamedAttributeNode(value = "props"))
+public class EventModel extends PersistentObject {
+
+    public static final String EVENT_MODEL_PROPS = "EventModel.props";
+    private String type;
+    private Set<EventModelProperty> props;
+
+    public EventModel() {}
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Override
+    public Long getId() {
+        return super.getId();
+    }
+
+    @Override
+    public void setId(Long id) {
+        super.setId(id);
+    }
+
+    @Column(name = "type")
+    public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    @OneToMany(fetch = FetchType.LAZY, mappedBy = "eventModel", cascade = CascadeType.ALL)
+    public Set<EventModelProperty> getProps() {
+        return props;
+    }
+
+    public void setProps(Set<EventModelProperty> props) {
+        this.props = props;
+    }
+}
+
+package com.analiticinfochat.ets.entity.sql;
+
+import com.analiticinfochat.ets.entity.PersistentObject;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
+import javax.persistence.FetchType;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.Index;
+import javax.persistence.JoinColumn;
+import javax.persistence.ManyToOne;
+import javax.persistence.Table;
+import javax.persistence.UniqueConstraint;
+
+@Entity
+@Table(name = "event_props", uniqueConstraints = {
+        @UniqueConstraint(name = "uniq_field", columnNames = { "name", "event_id" }) },
+        indexes = { @Index(name = "event_id", columnList = "event_id") })
+public class EventModelProperty extends PersistentObject {
+    private String name;
+    private String defaultValue;
+    private EventPropertyType type;
+    private Boolean required;
+    @JsonIgnore
+    private EventModel eventModel;
+
+    public EventModelProperty() {
+    }
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Override
+    public Long getId() {
+        return super.getId();
+    }
+
+    @Override
+    public void setId(Long id) {
+        super.setId(id);
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getDefaultValue() {
+        return defaultValue;
+    }
+
+    public void setDefaultValue(String defaultValue) {
+        this.defaultValue = defaultValue;
+    }
+
+    @Enumerated(EnumType.STRING)
+    public EventPropertyType getType() {
+        return type;
+    }
+
+    public void setType(EventPropertyType type) {
+        this.type = type;
+    }
+
+    public Boolean isRequired() {
+        return required;
+    }
+
+    public void setRequired(Boolean required) {
+        this.required = required;
+    }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "event_id", nullable = false)
+    public EventModel getEventModel() {
+        return eventModel;
+    }
+
+    public void setEventModel(EventModel eventModel) {
+        this.eventModel = eventModel;
+    }
+}
+
+package com.analiticinfochat.ets.entity.sql;
+
+public enum EventPropertyType {
+    LONG, DOUBLE, STRING, DATE, LIST
+}
+
+package com.analiticinfochat.ets.repository.mongo;
+
+import com.analiticinfochat.ets.entity.mongo.Event;
+import org.springframework.data.mongodb.repository.MongoRepository;
+import org.springframework.stereotype.Repository;
+
+public interface EventRepository extends MongoRepository<Event, String> {
+}
+
+package com.analiticinfochat.ets.repository.sql;
+
+import com.analiticinfochat.ets.entity.sql.EventModel;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface EventModelRepository extends JpaRepository<EventModel, Long>, EventModelRepositoryExtension {
+
+    @Query("select e from EventModel e LEFT JOIN FETCH e.props")
+    List<EventModel> findAllEager();
+}
+
+package com.analiticinfochat.ets.repository.sql;
+
+import com.analiticinfochat.ets.entity.sql.EventModel;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Repository;
+
+import javax.persistence.EntityGraph;
+import javax.persistence.EntityManager;
+import java.util.HashMap;
+import java.util.Map;
+
+@Repository
+public class EventModelRepositoryImpl implements EventModelRepositoryExtension {
+
+    private EntityManager entityManager;
+
+    @Autowired
+    public EventModelRepositoryImpl(EntityManager entityManager) {
+        this.entityManager = entityManager;
+    }
+
+    @Override
+    public EventModel findWithProps(Long id) {
+        EntityGraph graph = entityManager.createEntityGraph(EventModel.EVENT_MODEL_PROPS);
+        Map<String, Object> hints = new HashMap<String, Object>();
+        hints.put("javax.persistence.fetchgraph", graph);
+        return entityManager.find(EventModel.class, id, hints);
+    }
+}
+
+package com.analiticinfochat.ets.service.redis;
+
+import com.analiticinfochat.ets.config.RabbitmqConfig;
+import com.analiticinfochat.ets.dto.RequestEventApiDto;
+import com.analiticinfochat.ets.entity.mongo.Event;
+import com.analiticinfochat.ets.service.EventService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.amqp.core.AmqpTemplate;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+@Service
+public class EventListener {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(EventListener.class);
+
+    @Autowired
+    private EventService eventService;
+    @Autowired
+    private AmqpTemplate amqpTemplate;
+
+    @RabbitListener(queues = { RabbitmqConfig.QUEUE_NAME })
+    @SuppressWarnings("unused")
+    public void processEvent(RequestEventApiDto requestEventApiDto) {
+        LOGGER.info("Start Event process {}.", requestEventApiDto);
+        Event event = eventService.saveEvent(requestEventApiDto);
+        amqpTemplate
+                .convertAndSend("event:save:result", new EventResult(event != null ? event.toString() : "not saved"));
+        LOGGER.info("End Event process {}.", event);
+    }
+
+    public static class EventResult {
+        private String result;
+
+        public EventResult(String result) {
+            this.result = result;
+        }
+
+        public String getResult() {
+            return result;
+        }
+
+        public void setResult(String result) {
+            this.result = result;
+        }
+    }
+}
+
+package com.analiticinfochat.ets.service.redis;
+
+import com.analiticinfochat.ets.entity.sql.EventModel;
+import com.analiticinfochat.ets.repository.sql.EventModelRepository;
+import com.analiticinfochat.ets.util.RedisKeyUtils;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.BoundHashOperations;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public class RedisServiceImpl implements RedisService {
+
+    private static final ObjectMapper mapper = new ObjectMapper();
+    private final StringRedisTemplate redisTemplate;
+    private final EventModelRepository eventModelRepository;
+    private final ValueOperations<String, String> valueOps;
+
+    @Autowired
+    public RedisServiceImpl(EventModelRepository eventModelRepository, StringRedisTemplate redisTemplate) {
+        this.eventModelRepository = eventModelRepository;
+        this.redisTemplate = redisTemplate;
+        this.valueOps = redisTemplate.opsForValue();
+    }
+
+    @Override
+    public void warnUpRedis() {
+        List<EventModel> eventModels = eventModelRepository.findAll();
+        eventModels.stream().forEach(event -> {
+            final Long eventId = event.getId();
+            final String key = RedisKeyUtils.event(eventId);
+            if (redisTemplate.hasKey(key)) {
+                redisTemplate.delete(key);
+            }
+            BoundHashOperations<String, String, String> eventOps = redisTemplate.boundHashOps(key);
+            eventOps.put("id", eventId.toString());
+            eventOps.put("type", event.getType());
+            try {
+                String eventAsJson = mapper.writeValueAsString(event);
+                eventOps.put("json", eventAsJson);
+            } catch (JsonProcessingException e) {
+                eventOps.delete(key);
+            }
+            eventOps = redisTemplate.boundHashOps(key);
+            System.out.println(String.format("####### %s %s", eventOps.get("type"), eventOps.get("id")));
+        });
+    }
+}
+
+package com.analiticinfochat.ets.service;
+
+import com.analiticinfochat.ets.dto.RequestEventApiDto;
+import com.analiticinfochat.ets.entity.sql.EventModel;
+import com.analiticinfochat.ets.repository.sql.EventModelRepository;
+import com.analiticinfochat.ets.util.TypeUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+
+@Service
+public class EventModelServiceImpl implements EventModelService {
+    @Autowired
+    private EventModelRepository eventModelRepository;
+
+    @Override
+    public Optional<EventModel> getEventModel(RequestEventApiDto requestEventApiDto) {
+        final Map<String, String> props = requestEventApiDto.getProps();
+        return eventModelRepository.findAllEager().stream()
+                .filter(eventModel -> Objects.equals(requestEventApiDto.getType(), eventModel.getType()))
+                .filter(eventModel -> eventModel.getProps().stream().allMatch(
+                        prop -> (!prop.isRequired() || props.containsKey(prop.getName()) && TypeUtils
+                                .isCorrectType(props.get(prop.getName()), prop.getType())))).findAny();
+    }
+}
+
+package com.analiticinfochat.ets.service;
+
+import com.analiticinfochat.ets.dto.RequestEventApiDto;
+import com.analiticinfochat.ets.entity.mongo.Event;
+import com.analiticinfochat.ets.entity.sql.EventModel;
+import com.analiticinfochat.ets.entity.sql.EventModelProperty;
+import com.analiticinfochat.ets.repository.mongo.EventRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+@Service
+public class EventServiceImpl implements EventService {
+
+    @Autowired
+    private EventRepository eventRepository;
+    @Autowired
+    private EventModelService eventModelService;
+
+    @Override
+    public Optional<Event> classifyEvent(RequestEventApiDto requestEventApiDto) {
+
+        Event event = null;
+
+        Optional<EventModel> eventModelOpt = eventModelService.getEventModel(requestEventApiDto);
+        if (eventModelOpt.isPresent()) {
+            EventModel eventModel = eventModelOpt.get();
+            event = new Event();
+            event.setType(eventModel.getType());
+            final Map<String, Object> eventProps = eventModel.getProps().stream().collect(Collectors
+                    .toMap(EventModelProperty::getName,
+                            eventModelProperty -> requestEventApiDto.getProps().get(eventModelProperty.getName())));
+            event.setProps(eventProps);
+        }
+
+        return Optional.ofNullable(event);
+    }
+
+    @Override
+    public Event saveEvent(RequestEventApiDto requestEventApiDto) {
+        final Optional<Event> eventOpt = classifyEvent(requestEventApiDto);
+        return eventOpt.isPresent() ? eventRepository.save(eventOpt.get()) : null;
+    }
+}
+
+package com.analiticinfochat.ets.util;
+
+public abstract class RedisKeyUtils {
+    static final String UID = "uid:";
+
+    public static String event(Long eventId) {
+        return UID + eventId + ":event";
+    }
+}
+
+package com.analiticinfochat.ets.util;
+
+import com.analiticinfochat.ets.entity.sql.EventPropertyType;
+
+import java.sql.Date;
+
+public class TypeUtils {
+
+    public static boolean isCorrectType(String value, EventPropertyType type) {
+        switch (type) {
+            case LONG:
+                try {
+                    Long longValue = Long.valueOf(value);
+                } catch (NumberFormatException e) {
+                    return false;
+                }
+                break;
+            case DOUBLE:
+                try {
+                    Double doubleValue = Double.valueOf(value);
+                } catch (NumberFormatException e) {
+                    return false;
+                }
+                break;
+            case DATE:
+                try {
+                    Date dateValue = Date.valueOf(value);
+                } catch (NumberFormatException e) {
+                    return false;
+                }
+                break;
+        }
+        return true;
+    }
+}
+
+package com.analiticinfochat.gateway;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.netflix.zuul.EnableZuulProxy;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.session.data.redis.config.annotation.web.http.EnableRedisHttpSession;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import java.security.Principal;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+@SpringBootApplication
+@Controller
+@EnableRedisHttpSession
+@EnableZuulProxy
+public class GatewayApplication {
+
+    @RequestMapping("/user")
+    @ResponseBody
+    public Map<String, Object> user(Principal user) {
+        Map<String, Object> map = new LinkedHashMap<String, Object>();
+        map.put("name", user.getName());
+        map.put("roles", AuthorityUtils.authorityListToSet(((Authentication) user).getAuthorities()));
+        return map;
+    }
+
+    @RequestMapping("/login")
+    public String login() {
+        return "forward:/";
+    }
+
+    public static void main(String[] args) {
+        SpringApplication.run(GatewayApplication.class, args);
+    }
+}
+
+package com.analiticinfochat.integration.salesforce.controller;
+
+import com.analiticinfochat.integration.salesforce.repository.LiveChatButtonRepository;
+import com.analiticinfochat.integration.salesforce.repository.LiveChatDeploymentRepository;
+import org.apache.http.HttpHeaders;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+@Controller
+public class ChatController {
+
+    @Autowired
+    private LiveChatButtonRepository liveChatButtonRepository;
+    @Autowired
+    private LiveChatDeploymentRepository liveChatDeploymentRepository;
+
+    @RequestMapping("/test")
+    String page(Model model) {
+        return "test";
+    }
+
+    @RequestMapping("/prechat-form")
+    public String preChatForm() {
+        return "prechat-form";
+    }
+
+    @RequestMapping("/deployment")
+    public String deployLiveAgentChat(HttpServletRequest request, HttpServletResponse response, Model model) {
+        model.addAttribute("buttons",
+                liveChatButtonRepository.findByDeployments(liveChatDeploymentRepository.findAll()));
+        model.addAttribute("endpoint", "https://d.la2c1.salesforceliveagent.com/chat");
+        model.addAttribute("deployment", "572i0000000FChS");
+        model.addAttribute("organization", "00Di0000000j37W");
+        request.getHeader(HttpHeaders.REFERER);
+        return "deployment";
+    }
+}
+
+package com.analiticinfochat.integration.salesforce.controller;
+
+import com.analiticinfochat.integration.salesforce.controller.dto.ChatButtonApiDto;
+import com.analiticinfochat.integration.salesforce.controller.dto.ChatDataApiDto;
+import com.analiticinfochat.integration.salesforce.entity.LiveChatButton;
+import com.analiticinfochat.integration.salesforce.entity.RelativeURL;
+import com.analiticinfochat.integration.salesforce.repository.LiveChatButtonRepository;
+import com.analiticinfochat.integration.salesforce.repository.RelativeURLRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RestController;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@RestController
+public class ChatWebService {
+
+    @Autowired
+    private LiveChatButtonRepository liveChatButtonRepository;
+    @Autowired
+    private RelativeURLRepository relativeURLRepository;
+
+    @RequestMapping(value = "/load-chat-data", method = RequestMethod.POST)
+    public ChatDataApiDto getChatData(HttpServletRequest request, HttpServletResponse response) {
+        final String deploymentId = "572i0000000FChSAAW";
+        final String url = request.getHeader(HttpHeaders.REFERER);
+        System.out.println(url);
+				 List<LiveChatButton> buttons = liveChatButtonRepository.findAllByDeploymentId(deploymentId);
+        return new ChatDataApiDto("https://d.la2c1.salesforceliveagent.com/chat", deploymentId.substring(0, 15), "00Di0000000j37W",
+                buttons.stream()
+                        .map(button -> new ChatButtonApiDto(button.getSfid().substring(0, 15), button.getType()))
+                        .collect(Collectors.toList()));
+    }
+}
+
+package com.analiticinfochat.integration.salesforce.entity;
+
+public enum ButtonType {
+    Invite, Standard;
+}
+
+package com.analiticinfochat.integration.salesforce.entity;
+
+import javax.persistence.CascadeType;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.EnumType;
+import javax.persistence.Enumerated;
+import javax.persistence.FetchType;
+import javax.persistence.Id;
+import javax.persistence.JoinColumn;
+import javax.persistence.JoinTable;
+import javax.persistence.ManyToMany;
+import javax.persistence.Table;
+import java.util.List;
+
+@Entity
+@Table(name = LiveChatButton.TABLE_NAME)
+public class LiveChatButton {
+    static final String TABLE_NAME = "livechatbutton";
+
+    @Id
+    @Column(name = "sfid")
+    private String sfid;
+
+    @Column(name = "skillid")
+    private String skillId;
+
+    @Column(name = "prechaturl")
+    private String preChatURL;
+
+    @Column(name = "postchaturl")
+    private String postChatURL;
+
+    @Column(name = "type")
+    @Enumerated(EnumType.STRING)
+    private ButtonType type;
+
+    @Column(name = "routingtype")
+    @Enumerated(EnumType.STRING)
+    private RoutingType routingType;
+
+    @Column(name = "isactive")
+    private Boolean isActive;
+
+    @Column(name = "masterlabel")
+    private String name;
+
+    @ManyToMany(targetEntity = LiveChatDeployment.class, fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @JoinTable(name = "livechatbuttondeployment", joinColumns = {
+            @JoinColumn(name = "buttonid", nullable = false, updatable = false) }, inverseJoinColumns = {
+            @JoinColumn(name = "deploymentid", nullable = false, updatable = false) })
+    private List<LiveChatDeployment> deployments;
+
+    @ManyToMany(targetEntity = Skill.class, fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    @JoinTable(name = "livechatbuttonskill", joinColumns = {
+            @JoinColumn(name = "buttonid", nullable = false, updatable = false) }, inverseJoinColumns = {
+            @JoinColumn(name = "skillid", nullable = false, updatable = false) })
+    private List<Skill> skills;
+
+    public LiveChatButton() {
+    }
+
+    public String getSfid() {
+        return sfid;
+    }
+
+    public void setSfid(String sfid) {
+        this.sfid = sfid;
+    }
+
+    public String getSkillId() {
+        return skillId;
+    }
+
+    public void setSkillId(String skillId) {
+        this.skillId = skillId;
+    }
+
+    public List<LiveChatDeployment> getDeployments() {
+        return deployments;
+    }
+
+    public void setDeployments(List<LiveChatDeployment> deployments) {
+        this.deployments = deployments;
+    }
+
+    public String getPreChatURL() {
+        return preChatURL;
+    }
+
+    public void setPreChatURL(String preChatURL) {
+        this.preChatURL = preChatURL;
+    }
+
+    public String getPostChatURL() {
+        return postChatURL;
+    }
+
+    public void setPostChatURL(String postChatURL) {
+        this.postChatURL = postChatURL;
+    }
+
+    public ButtonType getType() {
+        return type;
+    }
+
+    public void setType(ButtonType type) {
+        this.type = type;
+    }
+
+    public RoutingType getRoutingType() {
+        return routingType;
+    }
+
+    public void setRoutingType(RoutingType routingType) {
+        this.routingType = routingType;
+    }
+
+    public Boolean getIsActive() {
+        return isActive;
+    }
+
+    public void setIsActive(Boolean isActive) {
+        this.isActive = isActive;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public List<Skill> getSkills() {
+        return skills;
+    }
+
+    public void setSkills(List<Skill> skills) {
+        this.skills = skills;
+    }
+
+    @Override
+    public String toString() {
+        return "LiveChatButton{" +
+                ", sfid='" + sfid + '\'' +
+                ", skillId='" + skillId + '\'' +
+                ", preChatURL='" + preChatURL + '\'' +
+                ", postChatURL='" + postChatURL + '\'' +
+                ", type=" + type +
+                ", routingType=" + routingType +
+                ", isActive=" + isActive +
+                ", name='" + name + '\'' +
+                ", deployments=" + deployments +
+                '}';
+    }
+}
+
+package com.analiticinfochat.integration.salesforce.entity;
+
+import javax.persistence.CascadeType;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.FetchType;
+import javax.persistence.Id;
+import javax.persistence.JoinColumn;
+import javax.persistence.JoinTable;
+import javax.persistence.ManyToMany;
+import javax.persistence.Table;
+import java.util.List;
+
+@Entity
+@Table(name = LiveChatDeployment.LIVE_CHAT_DEPLOYMENT_TABLE)
+public class LiveChatDeployment {
+
+    static final String LIVE_CHAT_DEPLOYMENT_TABLE = "livechatdeployment";
+
+    @Id
+    @Column(name = "sfid")
+    private String sfid;
+
+    @Column(name = "masterlabel")
+    private String name;
+
+    @ManyToMany(targetEntity = LiveChatButton.class, fetch = FetchType.EAGER, cascade = CascadeType.ALL)
+    @JoinTable(name = "livechatbuttondeployment", joinColumns = {
+            @JoinColumn(name = "deploymentid", nullable = false, updatable = false) }, inverseJoinColumns = {
+            @JoinColumn(name = "buttonid", nullable = false, updatable = false) })
+    private List<LiveChatButton> buttons;
+
+    public LiveChatDeployment() {
+    }
+
+    public String getId() {
+        return sfid;
+    }
+
+    public String getSfid() {
+        return sfid;
+    }
+
+    public void setSfid(String sfid) {
+        this.sfid = sfid;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public List<LiveChatButton> getButtons() {
+        return buttons;
+    }
+
+    public void setButtons(List<LiveChatButton> buttons) {
+        this.buttons = buttons;
+    }
+}
+
+package com.analiticinfochat.integration.salesforce.repository;
+
+import com.analiticinfochat.integration.salesforce.entity.LiveChatButton;
+import com.analiticinfochat.integration.salesforce.entity.LiveChatDeployment;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import javax.transaction.Transactional;
+import java.util.Collection;
+import java.util.List;
+
+@Repository
+public interface LiveChatButtonRepository extends JpaRepository<LiveChatButton, String> {
+
+    List<LiveChatButton> findByDeployments(Collection<LiveChatDeployment> deployments);
+
+    @Query("select b from LiveChatButton b join fetch b.deployments")
+    List<LiveChatButton> findAllWithDeployments();
+
+    @Query("select b from LiveChatButton b join fetch b.skills")
+    List<LiveChatButton> findAllWithSkills();
+
+    @Query(value = "select * from salesforce.livechatbutton b "
+            + " left join salesforce.livechatbuttondeployment bd on b.sfid = bd.buttonid"
+            + " where bd.deploymentid = :deploymentId or b.type = 'Standard'", nativeQuery = true)
+    List<LiveChatButton> findAllByDeploymentId(@Param("deploymentId") String deploymentId);
+
+    @Query(value = "select * from salesforce.livechatbutton b "
+            + " left join salesforce.livechatbuttondeployment bd on b.sfid = bd.buttonid"
+            + " where bd.deploymentid = :deploymentId", nativeQuery = true)
+    List<LiveChatButton> findInviteButtonsByDeploymentId(@Param("deploymentId") String deploymentId);
+
+    @Query(value = "select * from salesforce.livechatbutton b where b.type = 'Standard'", nativeQuery = true)
+    List<LiveChatButton> findStandardButtons();
+}
+
+package com.analiticinfochat.integration.salesforce.repository;
+
+import com.analiticinfochat.integration.salesforce.entity.RelativeURL;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import javax.persistence.EntityManager;
+
+@Repository
+public interface RelativeURLRepository extends JpaRepository<RelativeURL, String> {
+
+
+    @Query(value = "select * from salesforce.test_111__relative_url__c rel"
+            + " inner join salesforce.test_111__site__c s on s.sfid = rel.test_111__site__c"
+            + " where s.test_111__domain__c || rel.test_111__path__c = :url",
+            nativeQuery = true)
+    RelativeURL findRelativeURLbyURL(@Param("url") String url);
+}
+
+
+  \end{lstlisting}
+
+
